@@ -13,6 +13,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -107,7 +108,64 @@ func exchangeCode(tokenEndpoint, code, redirectURI, clientID, codeVerifier strin
 	return &tr, nil
 }
 
+func cacheDir() (string, error) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, ".kube", ".sikalabs-kubernetes-oidc-login"), nil
+}
+
+func cacheKey(issuerURL, clientID string) string {
+	h := sha256.Sum256([]byte(issuerURL + "|" + clientID))
+	return base64.RawURLEncoding.EncodeToString(h[:])[:16]
+}
+
+func loadCachedCredential(issuerURL, clientID string) (*execCredential, error) {
+	dir, err := cacheDir()
+	if err != nil {
+		return nil, err
+	}
+	path := filepath.Join(dir, cacheKey(issuerURL, clientID)+".json")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var cred execCredential
+	if err := json.Unmarshal(data, &cred); err != nil {
+		return nil, err
+	}
+	expiry, err := time.Parse(time.RFC3339, cred.Status.ExpirationTimestamp)
+	if err != nil {
+		return nil, err
+	}
+	if time.Now().Add(10 * time.Second).After(expiry) {
+		return nil, fmt.Errorf("token expired")
+	}
+	return &cred, nil
+}
+
+func saveCredential(issuerURL, clientID string, cred *execCredential) error {
+	dir, err := cacheDir()
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return err
+	}
+	data, err := json.Marshal(cred)
+	if err != nil {
+		return err
+	}
+	path := filepath.Join(dir, cacheKey(issuerURL, clientID)+".json")
+	return os.WriteFile(path, data, 0600)
+}
+
 func Login(issuerURL, clientID string) error {
+	if cached, err := loadCachedCredential(issuerURL, clientID); err == nil {
+		return json.NewEncoder(os.Stdout).Encode(cached)
+	}
+
 	cfg, err := discoverOIDC(strings.TrimRight(issuerURL, "/"))
 	if err != nil {
 		return fmt.Errorf("OIDC discovery: %w", err)
@@ -189,5 +247,6 @@ func Login(issuerURL, clientID string) error {
 		},
 	}
 
+	_ = saveCredential(issuerURL, clientID, &cred)
 	return json.NewEncoder(os.Stdout).Encode(cred)
 }
