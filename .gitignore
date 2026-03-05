@@ -19,3 +19,6 @@
 *.local.txt
 *.local.md
 Makefile.local.mk
+
+# sikalabs-kubernetes-oidc-login
+/sikalabs-kubernetes-oidc-login
