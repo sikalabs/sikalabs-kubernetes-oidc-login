@@ -82,14 +82,18 @@ func openBrowser(url string) {
 	_ = cmd.Start()
 }
 
-func exchangeCode(tokenEndpoint, code, redirectURI, clientID, codeVerifier string) (*tokenResponse, error) {
-	resp, err := http.PostForm(tokenEndpoint, url.Values{
+func exchangeCode(tokenEndpoint, code, redirectURI, clientID, clientSecret, codeVerifier string) (*tokenResponse, error) {
+	params := url.Values{
 		"grant_type":    {"authorization_code"},
 		"code":          {code},
 		"redirect_uri":  {redirectURI},
 		"client_id":     {clientID},
 		"code_verifier": {codeVerifier},
-	})
+	}
+	if clientSecret != "" {
+		params.Set("client_secret", clientSecret)
+	}
+	resp, err := http.PostForm(tokenEndpoint, params)
 	if err != nil {
 		return nil, err
 	}
@@ -116,17 +120,17 @@ func cacheDir() (string, error) {
 	return filepath.Join(home, ".kube", ".sikalabs-kubernetes-oidc-login"), nil
 }
 
-func cacheKey(issuerURL, clientID string) string {
-	h := sha256.Sum256([]byte(issuerURL + "|" + clientID))
+func cacheKey(issuerURL, clientID, clientSecret string) string {
+	h := sha256.Sum256([]byte(issuerURL + "|" + clientID + "|" + clientSecret))
 	return base64.RawURLEncoding.EncodeToString(h[:])[:16]
 }
 
-func loadCachedCredential(issuerURL, clientID string) (*execCredential, error) {
+func loadCachedCredential(issuerURL, clientID, clientSecret string) (*execCredential, error) {
 	dir, err := cacheDir()
 	if err != nil {
 		return nil, err
 	}
-	path := filepath.Join(dir, cacheKey(issuerURL, clientID)+".json")
+	path := filepath.Join(dir, cacheKey(issuerURL, clientID, clientSecret)+".json")
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, err
@@ -145,7 +149,7 @@ func loadCachedCredential(issuerURL, clientID string) (*execCredential, error) {
 	return &cred, nil
 }
 
-func saveCredential(issuerURL, clientID string, cred *execCredential) error {
+func saveCredential(issuerURL, clientID, clientSecret string, cred *execCredential) error {
 	dir, err := cacheDir()
 	if err != nil {
 		return err
@@ -157,12 +161,12 @@ func saveCredential(issuerURL, clientID string, cred *execCredential) error {
 	if err != nil {
 		return err
 	}
-	path := filepath.Join(dir, cacheKey(issuerURL, clientID)+".json")
+	path := filepath.Join(dir, cacheKey(issuerURL, clientID, clientSecret)+".json")
 	return os.WriteFile(path, data, 0600)
 }
 
-func Login(issuerURL, clientID string) error {
-	if cached, err := loadCachedCredential(issuerURL, clientID); err == nil {
+func Login(issuerURL, clientID, clientSecret string) error {
+	if cached, err := loadCachedCredential(issuerURL, clientID, clientSecret); err == nil {
 		return json.NewEncoder(os.Stdout).Encode(cached)
 	}
 
@@ -230,7 +234,7 @@ func Login(issuerURL, clientID string) error {
 		return fmt.Errorf("timeout waiting for login")
 	}
 
-	tr, err := exchangeCode(cfg.TokenEndpoint, code, redirectURI, clientID, codeVerifier)
+	tr, err := exchangeCode(cfg.TokenEndpoint, code, redirectURI, clientID, clientSecret, codeVerifier)
 	if err != nil {
 		return fmt.Errorf("token exchange: %w", err)
 	}
@@ -247,6 +251,6 @@ func Login(issuerURL, clientID string) error {
 		},
 	}
 
-	_ = saveCredential(issuerURL, clientID, &cred)
+	_ = saveCredential(issuerURL, clientID, clientSecret, &cred)
 	return json.NewEncoder(os.Stdout).Encode(cred)
 }
