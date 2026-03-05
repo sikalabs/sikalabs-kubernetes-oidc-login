@@ -20,5 +20,8 @@
 *.local.md
 Makefile.local.mk
 
+# Go
+/dist
+
 # sikalabs-kubernetes-oidc-login
 /sikalabs-kubernetes-oidc-login
