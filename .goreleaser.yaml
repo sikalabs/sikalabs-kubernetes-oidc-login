@@ -1,0 +1,76 @@
+version: 2
+
+project_name: sikalabs-kubernetes-oidc-login
+
+before:
+  hooks:
+    - rm -rf ./dist
+    - go mod tidy
+    - git push
+    - git push --tags
+builds:
+  -
+    env:
+      - CGO_ENABLED=0
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    flags:
+      - -trimpath
+    ldflags:
+      - -s
+      - -w
+      - -X github.com/sikalabs/sikalabs-kubernetes-oidc-login/version.Version=v{{.Version}}
+    goos:
+      - windows
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: "arm64"
+    binary: sikalabs-kubernetes-oidc-login
+
+archives:
+  - formats: [ "tar.gz" ]
+    name_template: "{{ .ProjectName }}_v{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+release:
+  prerelease: auto
+  extra_files:
+    - glob: ./dist/sikalabs-kubernetes-oidc-login_windows_amd64_v1/sikalabs-kubernetes-oidc-login.exe
+
+checksum:
+  name_template: "{{ .ProjectName }}_checksums.txt"
+  algorithm: sha256
+
+brews:
+  -
+    name: sikalabs-kubernetes-oidc-login
+    repository:
+      owner: sikalabs
+      name: homebrew-tap
+    skip_upload: auto
+    homepage: https://github.com/sikalabs/sikalabs-kubernetes-oidc-login
+    url_template: "https://github.com/sikalabs/sikalabs-kubernetes-oidc-login/releases/download/{{ .Tag }}/{{ .ArtifactName }}"
+    directory: Formula
+    caveats: "How to use this binary: https://github.com/sikalabs/sikalabs-kubernetes-oidc-login"
+    description: "sikalabs-kubernetes-oidc-login is a simple command-line tool that performs OIDC login and outputs Kubernetes ExecCredential for kubectl. It allows users to authenticate with an OIDC provider and obtain the necessary credentials to access Kubernetes clusters."
+    install: |
+      bin.install "sikalabs-kubernetes-oidc-login"
+    test: |
+      system "#{bin}/sikalabs-kubernetes-oidc-login version"
+
+changelog:
+  filters:
+    exclude:
+      - '^VERSION'
+
+scoops:
+  -
+    repository:
+      owner: sikalabs
+      name: scoop-bucket
+    homepage:  https://github.com/sikalabs/sikalabs-kubernetes-oidc-login
+    description: "sikalabs-kubernetes-oidc-login is a simple command-line tool that performs OIDC login and outputs Kubernetes ExecCredential for kubectl. It allows users to authenticate with an OIDC provider and obtain the necessary credentials to access Kubernetes clusters."
+    license: MIT
