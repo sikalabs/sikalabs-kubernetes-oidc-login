@@ -9,9 +9,18 @@ var FlagIssuer string
 var FlagClientID string
 var FlagClientSecret string
 
-func GetCmd() *cobra.Command {
+type GetCmdOpts struct {
+	NameOverride string
+}
+
+func GetCmd(opts ...GetCmdOpts) *cobra.Command {
+	var name string = "sikalabs-kubernetes-oidc-login"
+	if len(opts) > 0 && opts[0].NameOverride != "" {
+		name = opts[0].NameOverride
+	}
+
 	var Cmd = &cobra.Command{
-		Use:   "sikalabs-kubernetes-oidc-login",
+		Use:   name,
 		Short: "Perform OIDC login and output Kubernetes ExecCredential for kubectl",
 		Args:  cobra.NoArgs,
 		Run: func(c *cobra.Command, args []string) {
