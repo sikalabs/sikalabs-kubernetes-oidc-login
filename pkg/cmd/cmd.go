@@ -1,7 +1,10 @@
 package cmd
 
 import (
+	"fmt"
+
 	"github.com/sikalabs/sikalabs-kubernetes-oidc-login/pkg/login"
+	"github.com/sikalabs/sikalabs-kubernetes-oidc-login/version"
 	"github.com/spf13/cobra"
 )
 
@@ -32,5 +35,16 @@ func GetCmd(opts ...GetCmdOpts) *cobra.Command {
 	Cmd.Flags().StringVar(&FlagClientID, "oidc-client-id", "", "OIDC Client ID")
 	Cmd.MarkFlagRequired("oidc-client-id")
 	Cmd.Flags().StringVar(&FlagClientSecret, "oidc-client-secret", "", "OIDC Client Secret")
+
+	var VersionCmd = &cobra.Command{
+		Use:     "version",
+		Short:   "Prints version",
+		Aliases: []string{"v"},
+		Args:    cobra.NoArgs,
+		Run: func(c *cobra.Command, args []string) {
+			fmt.Printf("%s\n", version.Version)
+		},
+	}
+	Cmd.AddCommand(VersionCmd)
 	return Cmd
 }
