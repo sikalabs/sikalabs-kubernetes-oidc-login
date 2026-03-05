@@ -14,10 +14,22 @@ This project has been heavily inspired by [int128/kubelogin](https://github.com/
 
 ## Installation
 
+### Install via Homebrew
+
+```bash
+brew install sikalabs/tap/sikalabs-kubernetes-oidc-login
+```
+
 ### Install via Go
 
 ```bash
 go install github.com/sikalabs/sikalabs-kubernetes-oidc-login@latest
+```
+
+### Install via slu
+
+```bash
+slu install-bin sikalabs-kubernetes-oidc-login
 ```
 
 ## Example Usage
