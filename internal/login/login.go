@@ -17,6 +17,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/sikalabs/dogsay/pkg/dogsay"
 )
 
 type oidcConfig struct {
@@ -212,7 +214,7 @@ func Login(issuerURL, clientID, clientSecret string) error {
 			http.Error(w, "no code", http.StatusBadRequest)
 			return
 		}
-		fmt.Fprintln(w, "Login successful. You can close this window.")
+		fmt.Fprintln(w, dogsay.DogSay("Login successful. You can close this window."))
 		codeCh <- code
 	})
 
