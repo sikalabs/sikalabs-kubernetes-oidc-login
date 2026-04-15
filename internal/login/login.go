@@ -224,8 +224,31 @@ func Login(issuerURL, clientID, clientSecret string) error {
 	}()
 	defer srv.Shutdown(context.Background())
 
-	fmt.Fprintf(os.Stderr, "Opening browser for login...\n%s\n", authURL)
+	fmt.Fprintf(os.Stderr, "Opening browser for login...\n%s\n\nIf running on a server without a browser, open the URL above on your local machine,\ncomplete login, then paste the callback URL here and press Enter:\n", authURL)
 	openBrowser(authURL)
+
+	go func() {
+		var line string
+		fmt.Fscan(os.Stdin, &line)
+		if line == "" {
+			return
+		}
+		u, err := url.Parse(line)
+		if err != nil {
+			errCh <- fmt.Errorf("invalid callback URL: %w", err)
+			return
+		}
+		if u.Query().Get("state") != state {
+			errCh <- fmt.Errorf("state mismatch")
+			return
+		}
+		code := u.Query().Get("code")
+		if code == "" {
+			errCh <- fmt.Errorf("no code in pasted URL: %s", line)
+			return
+		}
+		codeCh <- code
+	}()
 
 	var code string
 	select {
