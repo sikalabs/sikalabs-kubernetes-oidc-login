@@ -32,6 +32,12 @@ go install github.com/sikalabs/sikalabs-kubernetes-oidc-login@latest
 slu install-bin sikalabs-kubernetes-oidc-login
 ```
 
+### Install via curl
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/sikalabs/sikalabs-kubernetes-oidc-login/refs/heads/master/install.sh | sudo sh
+```
+
 ## Example Usage
 
 Try it from CLI
