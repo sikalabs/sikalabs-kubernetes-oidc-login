@@ -1,7 +1,13 @@
 package main
 
-import "github.com/sikalabs/sikalabs-kubernetes-oidc-login/pkg/cmd"
+import (
+	"os"
+
+	"github.com/sikalabs/sikalabs-kubernetes-oidc-login/pkg/cmd"
+)
 
 func main() {
-	cmd.GetCmd().Execute()
+	if err := cmd.GetCmd().Execute(); err != nil {
+		os.Exit(1)
+	}
 }
