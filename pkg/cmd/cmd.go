@@ -23,11 +23,12 @@ func GetCmd(opts ...GetCmdOpts) *cobra.Command {
 	}
 
 	var Cmd = &cobra.Command{
-		Use:   name,
-		Short: "Perform OIDC login and output Kubernetes ExecCredential for kubectl",
-		Args:  cobra.NoArgs,
-		Run: func(c *cobra.Command, args []string) {
-			login.Login(FlagIssuer, FlagClientID, FlagClientSecret)
+		Use:          name,
+		Short:        "Perform OIDC login and output Kubernetes ExecCredential for kubectl",
+		Args:         cobra.NoArgs,
+		SilenceUsage: true,
+		RunE: func(c *cobra.Command, args []string) error {
+			return login.Login(FlagIssuer, FlagClientID, FlagClientSecret)
 		},
 	}
 	Cmd.Flags().StringVar(&FlagIssuer, "oidc-issuer-url", "", "OIDC Issuer URL")
