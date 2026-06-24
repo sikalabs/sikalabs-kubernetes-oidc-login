@@ -27,8 +27,9 @@ type oidcConfig struct {
 }
 
 type tokenResponse struct {
-	IDToken   string `json:"id_token"`
-	ExpiresIn int    `json:"expires_in"`
+	IDToken      string `json:"id_token"`
+	RefreshToken string `json:"refresh_token"`
+	ExpiresIn    int    `json:"expires_in"`
 }
 
 type execCredential struct {
@@ -45,6 +46,11 @@ type execCredentialSpec struct {
 type execCredentialStatus struct {
 	ExpirationTimestamp string `json:"expirationTimestamp"`
 	Token               string `json:"token"`
+}
+
+type tokenCache struct {
+	Credential   execCredential `json:"credential"`
+	RefreshToken string         `json:"refresh_token,omitempty"`
 }
 
 func randomBase64URL(n int) string {
@@ -95,6 +101,22 @@ func exchangeCode(tokenEndpoint, code, redirectURI, clientID, clientSecret, code
 	if clientSecret != "" {
 		params.Set("client_secret", clientSecret)
 	}
+	return postTokenRequest(tokenEndpoint, params)
+}
+
+func refreshTokenGrant(tokenEndpoint, refreshToken, clientID, clientSecret string) (*tokenResponse, error) {
+	params := url.Values{
+		"grant_type":    {"refresh_token"},
+		"refresh_token": {refreshToken},
+		"client_id":     {clientID},
+	}
+	if clientSecret != "" {
+		params.Set("client_secret", clientSecret)
+	}
+	return postTokenRequest(tokenEndpoint, params)
+}
+
+func postTokenRequest(tokenEndpoint string, params url.Values) (*tokenResponse, error) {
 	resp, err := http.PostForm(tokenEndpoint, params)
 	if err != nil {
 		return nil, err
@@ -127,7 +149,15 @@ func cacheKey(issuerURL, clientID, clientSecret string) string {
 	return base64.RawURLEncoding.EncodeToString(h[:])[:16]
 }
 
-func loadCachedCredential(issuerURL, clientID, clientSecret string) (*execCredential, error) {
+func isCredentialValid(cred *execCredential) bool {
+	expiry, err := time.Parse(time.RFC3339, cred.Status.ExpirationTimestamp)
+	if err != nil {
+		return false
+	}
+	return time.Now().Add(10 * time.Second).Before(expiry)
+}
+
+func loadTokenCache(issuerURL, clientID, clientSecret string) (*tokenCache, error) {
 	dir, err := cacheDir()
 	if err != nil {
 		return nil, err
@@ -137,21 +167,14 @@ func loadCachedCredential(issuerURL, clientID, clientSecret string) (*execCreden
 	if err != nil {
 		return nil, err
 	}
-	var cred execCredential
-	if err := json.Unmarshal(data, &cred); err != nil {
+	var cache tokenCache
+	if err := json.Unmarshal(data, &cache); err != nil {
 		return nil, err
 	}
-	expiry, err := time.Parse(time.RFC3339, cred.Status.ExpirationTimestamp)
-	if err != nil {
-		return nil, err
-	}
-	if time.Now().Add(10 * time.Second).After(expiry) {
-		return nil, fmt.Errorf("token expired")
-	}
-	return &cred, nil
+	return &cache, nil
 }
 
-func saveCredential(issuerURL, clientID, clientSecret string, cred *execCredential) error {
+func saveTokenCache(issuerURL, clientID, clientSecret string, cache *tokenCache) error {
 	dir, err := cacheDir()
 	if err != nil {
 		return err
@@ -159,7 +182,7 @@ func saveCredential(issuerURL, clientID, clientSecret string, cred *execCredenti
 	if err := os.MkdirAll(dir, 0700); err != nil {
 		return err
 	}
-	data, err := json.Marshal(cred)
+	data, err := json.Marshal(cache)
 	if err != nil {
 		return err
 	}
@@ -167,14 +190,44 @@ func saveCredential(issuerURL, clientID, clientSecret string, cred *execCredenti
 	return os.WriteFile(path, data, 0600)
 }
 
+func buildCredential(tr *tokenResponse) execCredential {
+	expiry := time.Now().Add(time.Duration(tr.ExpiresIn) * time.Second).UTC()
+	return execCredential{
+		Kind:       "ExecCredential",
+		APIVersion: "client.authentication.k8s.io/v1beta1",
+		Spec:       execCredentialSpec{Interactive: false},
+		Status: execCredentialStatus{
+			ExpirationTimestamp: expiry.Format(time.RFC3339),
+			Token:               tr.IDToken,
+		},
+	}
+}
+
 func Login(issuerURL, clientID, clientSecret string) error {
-	if cached, err := loadCachedCredential(issuerURL, clientID, clientSecret); err == nil {
-		return json.NewEncoder(os.Stdout).Encode(cached)
+	cached, _ := loadTokenCache(issuerURL, clientID, clientSecret)
+
+	if cached != nil && isCredentialValid(&cached.Credential) {
+		return json.NewEncoder(os.Stdout).Encode(cached.Credential)
 	}
 
 	cfg, err := discoverOIDC(strings.TrimRight(issuerURL, "/"))
 	if err != nil {
 		return fmt.Errorf("OIDC discovery: %w", err)
+	}
+
+	if cached != nil && cached.RefreshToken != "" {
+		tr, err := refreshTokenGrant(cfg.TokenEndpoint, cached.RefreshToken, clientID, clientSecret)
+		if err == nil {
+			cred := buildCredential(tr)
+			refreshToken := tr.RefreshToken
+			if refreshToken == "" {
+				refreshToken = cached.RefreshToken
+			}
+			newCache := &tokenCache{Credential: cred, RefreshToken: refreshToken}
+			_ = saveTokenCache(issuerURL, clientID, clientSecret, newCache)
+			return json.NewEncoder(os.Stdout).Encode(cred)
+		}
+		fmt.Fprintf(os.Stderr, "Token refresh failed, re-authenticating: %v\n", err)
 	}
 
 	ln, err := net.Listen("tcp", "127.0.0.1:9999")
@@ -264,18 +317,8 @@ func Login(issuerURL, clientID, clientSecret string) error {
 		return fmt.Errorf("token exchange: %w", err)
 	}
 
-	expiry := time.Now().Add(time.Duration(tr.ExpiresIn) * time.Second).UTC()
-
-	cred := execCredential{
-		Kind:       "ExecCredential",
-		APIVersion: "client.authentication.k8s.io/v1beta1",
-		Spec:       execCredentialSpec{Interactive: false},
-		Status: execCredentialStatus{
-			ExpirationTimestamp: expiry.Format(time.RFC3339),
-			Token:               tr.IDToken,
-		},
-	}
-
-	_ = saveCredential(issuerURL, clientID, clientSecret, &cred)
+	cred := buildCredential(tr)
+	newCache := &tokenCache{Credential: cred, RefreshToken: tr.RefreshToken}
+	_ = saveTokenCache(issuerURL, clientID, clientSecret, newCache)
 	return json.NewEncoder(os.Stdout).Encode(cred)
 }
