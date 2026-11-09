@@ -1,0 +1,32 @@
+name: build-and-upload
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+
+      - name: Build linux/amd64
+        run: CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -trimpath -ldflags="-s -w" -o sikalabs-kubernetes-oidc-login-linux-amd64
+
+      - name: upload linux/amd64 build
+        env:
+          SLR_SIKALABS_UPLOAD_BIN_ACCESS_KEY: ${{ secrets.SLR_SIKALABS_UPLOAD_BIN_ACCESS_KEY }}
+          SLR_SIKALABS_UPLOAD_BIN_SECRET_KEY: ${{ secrets.SLR_SIKALABS_UPLOAD_BIN_SECRET_KEY }}
+          SIKALABS_ENCRYPTED_PASSWORD_SIKALABS_NOTIFICATION_V1: ${{ secrets.SIKALABS_ENCRYPTED_PASSWORD_SIKALABS_NOTIFICATION_V1 }}
+        run: |
+          curl -fsSLO https://sikalabs.fra1.digitaloceanspaces.com/bin/upload-sikalabs-bin-linux-amd64
+          chmod +x upload-sikalabs-bin-linux-amd64
+          ./upload-sikalabs-bin-linux-amd64 sikalabs-kubernetes-oidc-login-linux-amd64
+          curl -fsSLO https://sikalabs.fra1.digitaloceanspaces.com/bin/telegram-send-message-linux-amd64
+          chmod +x telegram-send-message-linux-amd64
+          ./telegram-send-message-linux-amd64 "CI: Bin \"sikalabs-kubernetes-oidc-login\" uploaded successfully"
