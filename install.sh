@@ -42,4 +42,4 @@ rm "/tmp/${TARBALL}"
 mv "/tmp/${BINARY}" "${INSTALL_DIR}/${BINARY}"
 chmod +x "${INSTALL_DIR}/${BINARY}"
 
-echo "Installed: $(${INSTALL_DIR}/${BINARY} version)"
+echo "Installed: ${BINARY} $(${INSTALL_DIR}/${BINARY} version)"
